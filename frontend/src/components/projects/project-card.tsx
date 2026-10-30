@@ -12,10 +12,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatDate, type Project } from "@/lib/projects";
+import type { ProjectDto } from "@/lib/api";
+import { formatDate } from "@/lib/projects";
 
 interface ProjectCardProps {
-  project: Project;
+  project: ProjectDto;
   onEdit: () => void;
   onDelete: () => void;
 }

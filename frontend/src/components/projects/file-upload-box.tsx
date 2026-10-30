@@ -1,50 +1,35 @@
 "use client";
 
-import { useState } from "react";
-import { FileText, UploadCloud, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useRef, useState } from "react";
+import { Loader2, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createId, formatBytes, type FileSource } from "@/lib/projects";
 
 interface FileUploadBoxProps {
-  file: FileSource | null;
-  onChange: (file: FileSource | null) => void;
+  uploading?: boolean;
+  onFileSelected: (file: File) => void;
 }
 
-export function FileUploadBox({ file, onChange }: FileUploadBoxProps) {
+export function FileUploadBox({
+  uploading = false,
+  onFileSelected,
+}: FileUploadBoxProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   const handleFiles = (files: FileList | null) => {
-    const selected = files?.[0];
-    if (!selected) return;
-    onChange({
-      id: createId(),
-      kind: "file",
-      name: selected.name,
-      size: selected.size,
-      type: selected.type || "application/octet-stream",
-    });
+    const file = files?.[0];
+    if (!file) return;
+    onFileSelected(file);
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
   };
 
-  if (file) {
+  if (uploading) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-          <FileText className="size-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{file.name}</p>
-          <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => onChange(null)}
-          aria-label="Remove file"
-        >
-          <X />
-        </Button>
+      <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-6 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin text-primary" />
+        Uploading…
       </div>
     );
   }
@@ -74,6 +59,7 @@ export function FileUploadBox({ file, onChange }: FileUploadBoxProps) {
         Drag &amp; drop or click to browse
       </span>
       <input
+        ref={inputRef}
         type="file"
         className="sr-only"
         onChange={(event) => handleFiles(event.target.files)}

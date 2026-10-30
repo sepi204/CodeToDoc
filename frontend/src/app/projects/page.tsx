@@ -17,12 +17,14 @@ import { ProjectDialog } from "@/components/projects/project-dialog";
 import { useProjects } from "@/components/projects/projects-provider";
 import {
   BookOpen,
+  CircleAlert,
   FileCode2,
   FolderOpen,
+  Loader2,
   Plus,
   Sparkles,
 } from "lucide-react";
-import type { Project } from "@/lib/projects";
+import type { ProjectDto } from "@/lib/api";
 
 const outputTypes = [
   {
@@ -40,41 +42,53 @@ const outputTypes = [
 ];
 
 export default function ProjectsPage() {
-  const { projects, isHydrated, createProject, updateProject, deleteProject } =
+  const { projects, isLoading, error, createProject, updateProject, deleteProject } =
     useProjects();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | undefined>(
+  const [editingProject, setEditingProject] = useState<ProjectDto | undefined>(
     undefined
   );
-  const [deletingProject, setDeletingProject] = useState<Project | undefined>(
+  const [deletingProject, setDeletingProject] = useState<ProjectDto | undefined>(
     undefined
   );
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const openCreate = () => {
     setEditingProject(undefined);
     setDialogOpen(true);
   };
 
-  const openEdit = (project: Project) => {
+  const openEdit = (project: ProjectDto) => {
     setEditingProject(project);
     setDialogOpen(true);
   };
 
-  const handleSubmit = (values: { title: string; description: string }) => {
-    if (editingProject) {
-      updateProject(editingProject.id, values);
-    } else {
-      createProject(values);
+  const handleSubmit = async (values: { title: string; description: string }) => {
+    setActionError(null);
+    try {
+      if (editingProject) {
+        await updateProject(editingProject.id, values);
+      } else {
+        await createProject(values);
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Something went wrong.");
     }
   };
 
-  const handleDelete = () => {
-    if (deletingProject) {
-      deleteProject(deletingProject.id);
+  const handleDelete = async () => {
+    if (!deletingProject) return;
+    setActionError(null);
+    try {
+      await deleteProject(deletingProject.id);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Something went wrong.");
     }
     setDeletingProject(undefined);
   };
+
+  const errorMessage = error ?? actionError;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
@@ -119,9 +133,9 @@ export default function ProjectsPage() {
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Your projects</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {isHydrated
-                ? `${projects.length} project${projects.length === 1 ? "" : "s"}`
-                : "Loading…"}
+              {isLoading
+                ? "Loading…"
+                : `${projects.length} project${projects.length === 1 ? "" : "s"}`}
             </p>
           </div>
           <Button onClick={openCreate} className="gap-1.5">
@@ -130,7 +144,18 @@ export default function ProjectsPage() {
           </Button>
         </div>
 
-        {isHydrated && projects.length === 0 ? (
+        {errorMessage ? (
+          <div className="mt-6 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+            <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
+            <p className="text-sm text-foreground">{errorMessage}</p>
+          </div>
+        ) : null}
+
+        {isLoading ? (
+          <div className="mt-8 flex items-center justify-center py-16">
+            <Loader2 className="size-6 animate-spin text-primary" />
+          </div>
+        ) : projects.length === 0 ? (
           <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 px-6 py-16 text-center">
             <span className="inline-flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground">
               <FolderOpen className="size-6" />
@@ -185,10 +210,7 @@ export default function ProjectsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={handleDelete}
-            >
+            <AlertDialogAction variant="destructive" onClick={handleDelete}>
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

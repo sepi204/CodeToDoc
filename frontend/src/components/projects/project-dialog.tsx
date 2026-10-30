@@ -13,12 +13,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { Project } from "@/lib/projects";
+import type { ProjectDto } from "@/lib/api";
 
 interface ProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  project?: Project;
+  project?: ProjectDto;
   onSubmit: (values: { title: string; description: string }) => void;
 }
 

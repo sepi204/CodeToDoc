@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CodeToDoc.Api/CodeToDoc.Api.csproj" />
+    <Project Path="src/CodeToDoc.Infrastructure/CodeToDoc.Infrastructure.csproj" />
+    <Project Path="src/CodeToDoc.Repository/CodeToDoc.Repository.csproj" />
+    <Project Path="src/CodeToDoc.Service/CodeToDoc.Service.csproj" />
+  </Folder>
+</Solution>

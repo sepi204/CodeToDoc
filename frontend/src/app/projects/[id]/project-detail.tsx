@@ -6,7 +6,9 @@ import {
   ArrowLeft,
   BookOpen,
   CheckCircle2,
+  CircleAlert,
   FileCode2,
+  FileText,
   Link2,
   Loader2,
   Pencil,
@@ -19,79 +21,34 @@ import { FileUploadBox } from "@/components/projects/file-upload-box";
 import { ProjectDialog } from "@/components/projects/project-dialog";
 import { useProjects } from "@/components/projects/projects-provider";
 import {
-  createId,
+  createLocalId,
+  formatBytes,
   isFileSource,
   isRepoSource,
-  type FileSource,
-  type ProjectSource,
-  type RepoSource,
 } from "@/lib/projects";
 
-type FileSlot = { id: string; file: FileSource | null };
-type RepoSlot = { id: string; url: string };
 type ConvertType = "technical" | "guide";
 
+interface PendingUpload {
+  id: string;
+  uploading: boolean;
+}
+
 export function ProjectDetail({ id }: { id: string }) {
-  const { projects, isHydrated, updateProject } = useProjects();
+  const { projects, isLoading, updateProject, addSource, removeSource } =
+    useProjects();
   const project = projects.find((p) => p.id === id);
 
-  const [fileSlots, setFileSlots] = useState<FileSlot[]>([]);
-  const [repoSlots, setRepoSlots] = useState<RepoSlot[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([
+    { id: createLocalId(), uploading: false },
+  ]);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [sourceError, setSourceError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [converting, setConverting] = useState<ConvertType | null>(null);
   const [result, setResult] = useState<ConvertType | null>(null);
 
-  const initializedRef = useRef(false);
-  const skipSyncRef = useRef(false);
   const timerRef = useRef<number | null>(null);
-
-  // Load slots from the project once it becomes available.
-  useEffect(() => {
-    if (!project || initializedRef.current) return;
-
-    const fileSources = project.sources
-      .filter(isFileSource)
-      .map((source) => ({ id: source.id, file: source }));
-    const repoSources = project.sources
-      .filter(isRepoSource)
-      .map((source) => ({ id: source.id, url: source.url }));
-
-    setFileSlots(
-      fileSources.length > 0
-        ? fileSources
-        : [{ id: createId(), file: null }]
-    );
-    setRepoSlots(
-      repoSources.length > 0
-        ? repoSources
-        : [{ id: createId(), url: "" }]
-    );
-
-    initializedRef.current = true;
-    skipSyncRef.current = true; // skip the sync triggered by our own init
-  }, [project]);
-
-  // Persist slots back to the project whenever they change.
-  useEffect(() => {
-    if (!project || !initializedRef.current) return;
-
-    if (skipSyncRef.current) {
-      skipSyncRef.current = false;
-      return;
-    }
-
-    const sources: ProjectSource[] = [
-      ...fileSlots.flatMap((slot) => (slot.file ? [slot.file] : [])),
-      ...repoSlots.flatMap((slot) =>
-        slot.url.trim()
-          ? [{ id: slot.id, kind: "repo", url: slot.url.trim() } as RepoSource]
-          : []
-      ),
-    ];
-
-    updateProject(project.id, { sources });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileSlots, repoSlots]);
 
   useEffect(() => {
     return () => {
@@ -101,28 +58,75 @@ export function ProjectDetail({ id }: { id: string }) {
     };
   }, []);
 
-  const hasSources =
-    fileSlots.some((slot) => slot.file) ||
-    repoSlots.some((slot) => slot.url.trim());
-
   const addUploadBox = () =>
-    setFileSlots((prev) => [...prev, { id: createId(), file: null }]);
+    setPendingUploads((prev) => [
+      ...prev,
+      { id: createLocalId(), uploading: false },
+    ]);
 
-  const setUploadFile = (slotId: string, file: FileSource | null) =>
-    setFileSlots((prev) =>
-      prev.map((slot) => (slot.id === slotId ? { ...slot, file } : slot))
+  const removeUploadBox = (boxId: string) =>
+    setPendingUploads((prev) => prev.filter((box) => box.id !== boxId));
+
+  const handleFileSelected = async (boxId: string, file: File) => {
+    if (!project) return;
+    setSourceError(null);
+    setPendingUploads((prev) =>
+      prev.map((box) => (box.id === boxId ? { ...box, uploading: true } : box))
     );
 
-  const addRepoSlot = () =>
-    setRepoSlots((prev) => [...prev, { id: createId(), url: "" }]);
+    try {
+      await addSource(project.id, {
+        kind: "file",
+        name: file.name,
+        size: file.size,
+        contentType: file.type || "application/octet-stream",
+      });
+      setPendingUploads((prev) => prev.filter((box) => box.id !== boxId));
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : "Failed to upload file.");
+      setPendingUploads((prev) =>
+        prev.map((box) => (box.id === boxId ? { ...box, uploading: false } : box))
+      );
+    }
+  };
 
-  const setRepoUrl = (slotId: string, url: string) =>
-    setRepoSlots((prev) =>
-      prev.map((slot) => (slot.id === slotId ? { ...slot, url } : slot))
-    );
+  const handleRemoveFile = async (sourceId: string) => {
+    if (!project) return;
+    setSourceError(null);
+    try {
+      await removeSource(project.id, sourceId);
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : "Failed to remove file.");
+    }
+  };
 
-  const removeRepoSlot = (slotId: string) =>
-    setRepoSlots((prev) => prev.filter((slot) => slot.id !== slotId));
+  const handleAddRepo = async () => {
+    if (!project) return;
+    const url = repoUrl.trim();
+    if (!url) return;
+
+    setSourceError(null);
+    try {
+      await addSource(project.id, { kind: "repo", url });
+      setRepoUrl("");
+    } catch (err) {
+      setSourceError(
+        err instanceof Error ? err.message : "Failed to add repository."
+      );
+    }
+  };
+
+  const handleRemoveRepo = async (sourceId: string) => {
+    if (!project) return;
+    setSourceError(null);
+    try {
+      await removeSource(project.id, sourceId);
+    } catch (err) {
+      setSourceError(
+        err instanceof Error ? err.message : "Failed to remove repository."
+      );
+    }
+  };
 
   const handleConvert = (type: ConvertType) => {
     setResult(null);
@@ -133,7 +137,7 @@ export function ProjectDetail({ id }: { id: string }) {
     }, 1500);
   };
 
-  if (!isHydrated) {
+  if (isLoading) {
     return (
       <div className="mx-auto flex max-w-5xl items-center justify-center px-4 py-32 sm:px-6">
         <Loader2 className="size-6 animate-spin text-primary" />
@@ -157,6 +161,9 @@ export function ProjectDetail({ id }: { id: string }) {
       </div>
     );
   }
+
+  const fileSources = project.sources.filter(isFileSource);
+  const repoSources = project.sources.filter(isRepoSource);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -194,6 +201,13 @@ export function ProjectDetail({ id }: { id: string }) {
           many as you need.
         </p>
 
+        {sourceError ? (
+          <div className="mt-4 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+            <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
+            <p className="text-sm text-foreground">{sourceError}</p>
+          </div>
+        ) : null}
+
         <div className="mt-6 grid gap-8 lg:grid-cols-2">
           <div>
             <div className="flex items-center justify-between">
@@ -209,50 +223,46 @@ export function ProjectDetail({ id }: { id: string }) {
               </Button>
             </div>
             <div className="mt-3 space-y-3">
-              {fileSlots.map((slot) => (
-                <FileUploadBox
-                  key={slot.id}
-                  file={slot.file}
-                  onChange={(file) => setUploadFile(slot.id, file)}
-                />
+              {fileSources.map((source) => (
+                <div
+                  key={source.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                    <FileText className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{source.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatBytes(source.size ?? 0)}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => handleRemoveFile(source.id)}
+                    aria-label="Remove file"
+                  >
+                    <X />
+                  </Button>
+                </div>
               ))}
-            </div>
-          </div>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Repository links</h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={addRepoSlot}
-                className="gap-1"
-              >
-                <Plus />
-                Add repository
-              </Button>
-            </div>
-            <div className="mt-3 space-y-3">
-              {repoSlots.map((slot) => (
-                <div key={slot.id} className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Link2 className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="url"
-                      value={slot.url}
-                      onChange={(event) =>
-                        setRepoUrl(slot.id, event.target.value)
-                      }
-                      placeholder="https://github.com/owner/repo"
-                      className="pl-8"
+              {pendingUploads.map((box) => (
+                <div key={box.id} className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <FileUploadBox
+                      uploading={box.uploading}
+                      onFileSelected={(file) => handleFileSelected(box.id, file)}
                     />
                   </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => removeRepoSlot(slot.id)}
-                    aria-label="Remove repository"
+                    onClick={() => removeUploadBox(box.id)}
+                    aria-label="Remove upload box"
                   >
                     <X />
                   </Button>
@@ -260,11 +270,62 @@ export function ProjectDetail({ id }: { id: string }) {
               ))}
             </div>
           </div>
+
+          <div>
+            <h3 className="text-sm font-semibold">Repository links</h3>
+            <div className="mt-3 space-y-3">
+              {repoSources.map((source) => (
+                <div
+                  key={source.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                    <Link2 className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{source.url}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => handleRemoveRepo(source.id)}
+                    aria-label="Remove repository"
+                  >
+                    <X />
+                  </Button>
+                </div>
+              ))}
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleAddRepo();
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className="relative flex-1">
+                  <Link2 className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="url"
+                    value={repoUrl}
+                    onChange={(event) => setRepoUrl(event.target.value)}
+                    placeholder="https://github.com/owner/repo"
+                    className="pl-8"
+                  />
+                </div>
+                <Button type="submit" disabled={!repoUrl.trim()} className="gap-1">
+                  <Plus />
+                  Add
+                </Button>
+              </form>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Convert */}
-      {hasSources ? (
+      {project.sources.length > 0 ? (
         <section className="mt-12 rounded-2xl border border-border bg-card p-6">
           <h2 className="text-xl font-semibold">Generate documentation</h2>
           <p className="mt-1 text-sm text-muted-foreground">
