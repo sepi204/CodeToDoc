@@ -1,0 +1,174 @@
+# ==========================================
+# 1. Operating System Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ==========================================
+# 2. IDEs & Editors (Visual Studio & VS Code)
+# ==========================================
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.pyproj
+*.userprefs
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.history/
+
+# ==========================================
+# 3. .NET 8 / C# (Backend)
+# ==========================================
+# Build outputs & Visual Studio temporary files
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+[Tt]emp/
+[Tt]mp/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ASP.NET Core
+*.publishproj
+*.pubxml
+*.azurePubxml
+*.nupkg
+*.snupkg
+the-file-name.txt
+
+# NuGet packages
+**/packages/*
+*.nupkg
+# Uncomment if you need build packages checked in (not recommended)
+# !**/packages/build/
+
+# Diagnostics & Profiling
+*.vsp
+*.vspx
+*.sap
+*.opendb
+*.dbmdl
+*.jfm
+
+# User-specific ASP.NET settings
+*.user
+*.lock
+
+# ==========================================
+# 4. Node.js / Next.js (Frontend)
+# ==========================================
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# Next.js telemetry status
+.eslintcache
+.stylelintcache
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# 5. Python (AST Parser / Scripts / Workers)
+# ==========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================================
+# 6. Environment Variables & Secrets
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+# ==========================================
+# 7. Docker, Local Storage & User Uploads
+# ==========================================
+# Local database storage (PostgreSQL, Redis dumps)
+postgres_data/
+redis_data/
+*.rdb
+
+# Temporary repository clones and user zip uploads
+/storage/
+/uploads/
+/temp_repos/
