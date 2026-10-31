@@ -146,4 +146,32 @@ public class CSharpAstParserTests
         // Roslyn is lenient: it still yields a syntax tree without throwing.
         Assert.NotNull(endpoints);
     }
+
+    [Fact]
+    public void ExtractsEndpointsFromPrimaryConstructorController()
+    {
+        // C# 12 primary constructors (Roslyn >= 4.8). Regression: Roslyn 4.5
+        // failed to parse these, silently yielding zero endpoints.
+        var controller = """
+            [ApiController]
+            [Route("api/orders")]
+            [Authorize]
+            public sealed class OrdersController(ISender sender) : ControllerBase
+            {
+                [HttpPost("drafts")]
+                [Authorize(Policy = "OrdersCreate")]
+                public async Task<ActionResult<OrderDto>> CreateDraft(CreateDraftOrderCommand command, CancellationToken ct) =>
+                    Ok(await sender.Send(command, ct));
+            }
+            """;
+
+        var endpoints = _parser.Parse(new[] { Cs("OrdersController.cs", controller) });
+
+        var endpoint = Assert.Single(endpoints);
+        Assert.Equal("POST", endpoint.Method);
+        Assert.Equal("/api/orders/drafts", endpoint.Path);
+        Assert.Equal("OrdersController", endpoint.ControllerName);
+        Assert.Equal("CreateDraft", endpoint.ActionName);
+        Assert.True(endpoint.AuthRequired);
+    }
 }

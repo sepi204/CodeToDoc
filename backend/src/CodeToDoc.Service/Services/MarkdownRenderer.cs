@@ -202,5 +202,5 @@ public static class MarkdownRenderer
         return builder.ToString().TrimEnd() + "\n";
     }
 
-    private static string Escape(string text) => text.Replace("|", "\\|");
+    private static string Escape(string? text) => (text ?? string.Empty).Replace("|", "\\|");
 }

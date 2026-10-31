@@ -508,10 +508,18 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
         try
         {
             response = JsonSerializer.Deserialize<TechnicalModuleResponse>(content, JsonOptions);
-            return response is not null && response.DocumentType == "technical";
+            if (response is null || response.DocumentType != "technical")
+            {
+                response = null;
+                return false;
+            }
+
+            NormalizeTechnical(response);
+            return true;
         }
         catch (JsonException)
         {
+            response = null;
             return false;
         }
     }
@@ -522,11 +530,83 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
         try
         {
             response = JsonSerializer.Deserialize<UserGuideModuleResponse>(content, JsonOptions);
-            return response is not null && response.DocumentType == "userGuide";
+            if (response is null || response.DocumentType != "userGuide")
+            {
+                response = null;
+                return false;
+            }
+
+            NormalizeUserGuide(response);
+            return true;
         }
         catch (JsonException)
         {
+            response = null;
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Ensures every collection and nested collection on an LLM response is
+    /// non-null and free of null entries. Models are not obliged to emit every
+    /// field, so defensive normalization prevents null-reference failures
+    /// during reduce/render.
+    /// </summary>
+    private static void NormalizeTechnical(TechnicalModuleResponse r)
+    {
+        if (r.Overview is null) r.Overview = new();
+        if (r.Technologies is null) r.Technologies = new();
+        if (r.Architecture is null) r.Architecture = new();
+        if (r.Authentication is null) r.Authentication = new();
+        if (r.Prerequisites is null) r.Prerequisites = new();
+        if (r.Limitations is null) r.Limitations = new();
+        if (r.Endpoints is null) r.Endpoints = new();
+
+        r.Overview = r.Overview.Where(s => s is not null).ToList();
+        r.Technologies = r.Technologies.Where(s => s is not null).ToList();
+        r.Architecture = r.Architecture.Where(s => s is not null).ToList();
+        r.Authentication = r.Authentication.Where(s => s is not null).ToList();
+        r.Prerequisites = r.Prerequisites.Where(s => s is not null).ToList();
+        r.Endpoints = r.Endpoints.Where(e => e is not null).ToList();
+    }
+
+    private static void NormalizeUserGuide(UserGuideModuleResponse r)
+    {
+        if (r.Overview is null) r.Overview = new();
+        if (r.Limitations is null) r.Limitations = new();
+        if (r.Pages is null) r.Pages = new();
+
+        r.Overview = r.Overview.Where(s => s is not null).ToList();
+        r.Pages = r.Pages.Where(p => p is not null).ToList();
+
+        foreach (var page in r.Pages)
+        {
+            if (page.Introduction is null) page.Introduction = new();
+            if (page.Forms is null) page.Forms = new();
+            if (page.Actions is null) page.Actions = new();
+            if (page.Tables is null) page.Tables = new();
+
+            page.Forms = page.Forms.Where(f => f is not null).ToList();
+            page.Actions = page.Actions.Where(a => a is not null).ToList();
+            page.Tables = page.Tables.Where(t => t is not null).ToList();
+
+            foreach (var form in page.Forms)
+            {
+                if (form.Steps is null) form.Steps = new();
+                if (form.Outcomes is null) form.Outcomes = new();
+                form.Steps = form.Steps.Where(s => s is not null).ToList();
+            }
+
+            foreach (var action in page.Actions)
+            {
+                if (action.Label is null) action.Label = string.Empty;
+                if (action.Outcome is null) action.Outcome = string.Empty;
+            }
+
+            foreach (var table in page.Tables)
+            {
+                if (table.Columns is null) table.Columns = new();
+            }
         }
     }
 
