@@ -5,4 +5,7 @@
     <Project Path="src/CodeToDoc.Repository/CodeToDoc.Repository.csproj" />
     <Project Path="src/CodeToDoc.Service/CodeToDoc.Service.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CodeToDoc.Tests/CodeToDoc.Tests.csproj" />
+  </Folder>
 </Solution>

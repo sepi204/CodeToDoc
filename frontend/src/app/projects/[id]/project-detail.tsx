@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  BookOpen,
-  CheckCircle2,
   CircleAlert,
   FileCode2,
   FileText,
@@ -26,8 +25,7 @@ import {
   isFileSource,
   isRepoSource,
 } from "@/lib/projects";
-
-type ConvertType = "technical" | "guide";
+import { jobsApi } from "@/lib/jobs";
 
 interface PendingUpload {
   id: string;
@@ -35,6 +33,7 @@ interface PendingUpload {
 }
 
 export function ProjectDetail({ id }: { id: string }) {
+  const router = useRouter();
   const { projects, isLoading, updateProject, addSource, removeSource } =
     useProjects();
   const project = projects.find((p) => p.id === id);
@@ -45,18 +44,9 @@ export function ProjectDetail({ id }: { id: string }) {
   const [repoUrl, setRepoUrl] = useState("");
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [converting, setConverting] = useState<ConvertType | null>(null);
-  const [result, setResult] = useState<ConvertType | null>(null);
-
-  const timerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-      }
-    };
-  }, []);
+  const [zipFiles, setZipFiles] = useState<File[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [processError, setProcessError] = useState<string | null>(null);
 
   const addUploadBox = () =>
     setPendingUploads((prev) => [
@@ -81,6 +71,9 @@ export function ProjectDetail({ id }: { id: string }) {
         size: file.size,
         contentType: file.type || "application/octet-stream",
       });
+      if (file.name.toLowerCase().endsWith(".zip")) {
+        setZipFiles((prev) => [...prev, file]);
+      }
       setPendingUploads((prev) => prev.filter((box) => box.id !== boxId));
     } catch (err) {
       setSourceError(err instanceof Error ? err.message : "Failed to upload file.");
@@ -128,13 +121,25 @@ export function ProjectDetail({ id }: { id: string }) {
     }
   };
 
-  const handleConvert = (type: ConvertType) => {
-    setResult(null);
-    setConverting(type);
-    timerRef.current = window.setTimeout(() => {
-      setConverting(null);
-      setResult(type);
-    }, 1500);
+  const handleProcess = async () => {
+    setProcessError(null);
+    if (zipFiles.length === 0) {
+      setProcessError(
+        "Upload at least one ZIP archive to generate documentation."
+      );
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const started = await jobsApi.start(zipFiles);
+      router.push(`/documents?job=${started.jobId}`);
+    } catch (err) {
+      setProcessError(
+        err instanceof Error ? err.message : "Failed to start processing."
+      );
+      setProcessing(false);
+    }
   };
 
   if (isLoading) {
@@ -324,66 +329,43 @@ export function ProjectDetail({ id }: { id: string }) {
         </div>
       </section>
 
-      {/* Convert */}
+      {/* Process */}
       {project.sources.length > 0 ? (
         <section className="mt-12 rounded-2xl border border-border bg-card p-6">
           <h2 className="text-xl font-semibold">Generate documentation</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Choose the type of documentation you want to produce from this
-            project.
+            Process this project&apos;s uploaded ZIP archives into a technical
+            specification and a user guide (available as Markdown, PDF, and
+            DOCX).
           </p>
 
-          <div className="mt-5 flex flex-wrap gap-3">
+          {processError ? (
+            <div className="mt-4 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+              <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
+              <p className="text-sm text-foreground">{processError}</p>
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <Button
               type="button"
-              disabled={converting !== null}
-              onClick={() => handleConvert("technical")}
+              disabled={processing || zipFiles.length === 0}
+              onClick={handleProcess}
               className="h-11 gap-2 px-5"
             >
-              <FileCode2 />
-              Convert to Technical Documentation
+              {processing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FileCode2 />
+              )}
+              {processing ? "Processing…" : "Generate documentation"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={converting !== null}
-              onClick={() => handleConvert("guide")}
-              className="h-11 gap-2 px-5"
-            >
-              <BookOpen />
-              Convert to User Guide
-            </Button>
+            <span className="text-xs text-muted-foreground">
+              {zipFiles.length > 0
+                ? `${zipFiles.length} ZIP archive${zipFiles.length === 1 ? "" : "s"} ready.`
+                : "Upload a ZIP archive above to enable processing."}
+            </span>
           </div>
-
-          {converting ? (
-            <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin text-primary" />
-              Generating{" "}
-              {converting === "technical"
-                ? "technical documentation"
-                : "user guide"}
-              …
-            </div>
-          ) : null}
-
-          {result ? (
-            <div className="mt-6 flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 p-4">
-              <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />
-              <div>
-                <p className="font-semibold">
-                  {result === "technical"
-                    ? "Technical documentation"
-                    : "User guide"}{" "}
-                  generated
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  The documentation for “{project.title}” is ready. This is a
-                  frontend preview — the actual generation will be handled by
-                  the backend.
-                </p>
-              </div>
-            </div>
-          ) : null}
         </section>
       ) : (
         <section className="mt-12 rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center">

@@ -9,10 +9,26 @@ namespace CodeToDoc.Api.Controllers;
 public class ProjectsController : ControllerBase
 {
     private readonly IProjectService _projectService;
+    private readonly IPhaseOneProcessor _phaseOneProcessor;
+    private readonly IPipelineOrchestrator _pipelineOrchestrator;
+    private readonly IFullPipelineOrchestrator _fullPipelineOrchestrator;
+    private readonly ICorrelationPipelineOrchestrator _correlationPipelineOrchestrator;
+    private readonly ISynthesisPipelineOrchestrator _synthesisPipelineOrchestrator;
 
-    public ProjectsController(IProjectService projectService)
+    public ProjectsController(
+        IProjectService projectService,
+        IPhaseOneProcessor phaseOneProcessor,
+        IPipelineOrchestrator pipelineOrchestrator,
+        IFullPipelineOrchestrator fullPipelineOrchestrator,
+        ICorrelationPipelineOrchestrator correlationPipelineOrchestrator,
+        ISynthesisPipelineOrchestrator synthesisPipelineOrchestrator)
     {
         _projectService = projectService;
+        _phaseOneProcessor = phaseOneProcessor;
+        _pipelineOrchestrator = pipelineOrchestrator;
+        _fullPipelineOrchestrator = fullPipelineOrchestrator;
+        _correlationPipelineOrchestrator = correlationPipelineOrchestrator;
+        _synthesisPipelineOrchestrator = synthesisPipelineOrchestrator;
     }
 
     [HttpGet]
@@ -62,5 +78,160 @@ public class ProjectsController : ControllerBase
     {
         await _projectService.DeleteSourceAsync(id, sourceId, cancellationToken);
         return NoContent();
+    }
+
+    [HttpPost("process-synthesis")]
+    public async Task<ActionResult<SynthesisPipelineResult>> ProcessSynthesis(
+        [FromForm(Name = "archives")] List<IFormFile>? archives,
+        CancellationToken cancellationToken)
+    {
+        var files = archives ?? new List<IFormFile>();
+        var uploads = new List<PhaseOneArchiveUpload>(files.Count);
+        try
+        {
+            foreach (var file in files)
+            {
+                uploads.Add(new PhaseOneArchiveUpload
+                {
+                    FileName = file.FileName,
+                    Length = file.Length,
+                    Stream = file.OpenReadStream(),
+                });
+            }
+
+            var result = await _synthesisPipelineOrchestrator.ProcessAsync(uploads, cancellationToken);
+            return Ok(result);
+        }
+        finally
+        {
+            foreach (var upload in uploads)
+            {
+                upload.Stream.Dispose();
+            }
+        }
+    }
+
+    [HttpPost("process-correlation")]
+    public async Task<ActionResult<CorrelationPipelineResult>> ProcessCorrelation(
+        [FromForm(Name = "archives")] List<IFormFile>? archives,
+        CancellationToken cancellationToken)
+    {
+        var files = archives ?? new List<IFormFile>();
+        var uploads = new List<PhaseOneArchiveUpload>(files.Count);
+        try
+        {
+            foreach (var file in files)
+            {
+                uploads.Add(new PhaseOneArchiveUpload
+                {
+                    FileName = file.FileName,
+                    Length = file.Length,
+                    Stream = file.OpenReadStream(),
+                });
+            }
+
+            var result = await _correlationPipelineOrchestrator.ProcessAsync(uploads, cancellationToken);
+            return Ok(result);
+        }
+        finally
+        {
+            foreach (var upload in uploads)
+            {
+                upload.Stream.Dispose();
+            }
+        }
+    }
+
+    [HttpPost("process")]
+    public async Task<ActionResult<FullPipelineResult>> Process(
+        [FromForm(Name = "archives")] List<IFormFile>? archives,
+        CancellationToken cancellationToken)
+    {
+        var files = archives ?? new List<IFormFile>();
+        var uploads = new List<PhaseOneArchiveUpload>(files.Count);
+        try
+        {
+            foreach (var file in files)
+            {
+                uploads.Add(new PhaseOneArchiveUpload
+                {
+                    FileName = file.FileName,
+                    Length = file.Length,
+                    Stream = file.OpenReadStream(),
+                });
+            }
+
+            var result = await _fullPipelineOrchestrator.ProcessAsync(uploads, cancellationToken);
+            return Ok(result);
+        }
+        finally
+        {
+            foreach (var upload in uploads)
+            {
+                upload.Stream.Dispose();
+            }
+        }
+    }
+
+    [HttpPost("process-technical")]
+    public async Task<ActionResult<TechnicalSkeleton>> ProcessTechnical(
+        [FromForm(Name = "archives")] List<IFormFile>? archives,
+        CancellationToken cancellationToken)
+    {
+        var files = archives ?? new List<IFormFile>();
+        var uploads = new List<PhaseOneArchiveUpload>(files.Count);
+        try
+        {
+            foreach (var file in files)
+            {
+                uploads.Add(new PhaseOneArchiveUpload
+                {
+                    FileName = file.FileName,
+                    Length = file.Length,
+                    Stream = file.OpenReadStream(),
+                });
+            }
+
+            var skeleton = await _pipelineOrchestrator.ProcessAsync(uploads, cancellationToken);
+            return Ok(skeleton);
+        }
+        finally
+        {
+            foreach (var upload in uploads)
+            {
+                upload.Stream.Dispose();
+            }
+        }
+    }
+
+    [HttpPost("process-phase-one")]
+    public async Task<ActionResult<PhaseOneResult>> ProcessPhaseOne(
+        [FromForm(Name = "archives")] List<IFormFile>? archives,
+        CancellationToken cancellationToken)
+    {
+        var files = archives ?? new List<IFormFile>();
+        var uploads = new List<PhaseOneArchiveUpload>(files.Count);
+        try
+        {
+            foreach (var file in files)
+            {
+                uploads.Add(new PhaseOneArchiveUpload
+                {
+                    FileName = file.FileName,
+                    Length = file.Length,
+                    Stream = file.OpenReadStream(),
+                });
+            }
+
+            var result = await _phaseOneProcessor.ProcessAsync(uploads, cancellationToken);
+            return Ok(result);
+        }
+        finally
+        {
+            foreach (var upload in uploads)
+            {
+                upload.Stream.Dispose();
+            }
+        }
     }
 }

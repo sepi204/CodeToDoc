@@ -22,6 +22,10 @@ public class GlobalExceptionHandler : IExceptionHandler
         {
             NotFoundException => (StatusCodes.Status404NotFound, exception.Message),
             BadRequestException => (StatusCodes.Status400BadRequest, exception.Message),
+            InvalidArchiveException => (StatusCodes.Status400BadRequest, exception.Message),
+            UnsafeArchiveException => (StatusCodes.Status400BadRequest, "The uploaded archive contains an unsafe path."),
+            UnsupportedArchiveException => (StatusCodes.Status422UnprocessableEntity, exception.Message),
+            LimitExceededException => (StatusCodes.Status413PayloadTooLarge, exception.Message),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.")
         };
 
