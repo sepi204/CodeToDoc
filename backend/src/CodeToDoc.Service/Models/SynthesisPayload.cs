@@ -18,6 +18,28 @@ public sealed class SynthesisPayload
     public List<PayloadEndpoint> Endpoints { get; set; } = new();
 
     public List<PayloadPage> Pages { get; set; } = new();
+
+    public List<PayloadProject> Projects { get; set; } = new();
+
+    public List<PayloadEntity> Entities { get; set; } = new();
+
+    public List<string> Dependencies { get; set; } = new();
+}
+
+public sealed class PayloadProject
+{
+    public string Root { get; set; } = string.Empty;
+
+    public string Framework { get; set; } = string.Empty;
+
+    public string? Language { get; set; }
+}
+
+public sealed class PayloadEntity
+{
+    public string Name { get; set; } = string.Empty;
+
+    public List<PayloadField> Properties { get; set; } = new();
 }
 
 public sealed class PayloadEndpoint
@@ -29,6 +51,8 @@ public sealed class PayloadEndpoint
     public string Path { get; set; } = string.Empty;
 
     public string? ControllerName { get; set; }
+
+    public string? ActionName { get; set; }
 
     public bool AuthRequired { get; set; }
 

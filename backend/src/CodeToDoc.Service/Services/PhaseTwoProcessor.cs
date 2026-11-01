@@ -13,17 +13,20 @@ public sealed class PhaseTwoProcessor : IPhaseTwoProcessor
     private readonly IManifestParser _manifestParser;
     private readonly IArchitectureInferenceEngine _inferenceEngine;
     private readonly ICSharpAstParser _csharpAstParser;
+    private readonly IProjectRootDiscoverer _rootDiscoverer;
     private readonly ILogger<PhaseTwoProcessor> _logger;
 
     public PhaseTwoProcessor(
         IManifestParser manifestParser,
         IArchitectureInferenceEngine inferenceEngine,
         ICSharpAstParser csharpAstParser,
+        IProjectRootDiscoverer rootDiscoverer,
         ILogger<PhaseTwoProcessor> logger)
     {
         _manifestParser = manifestParser;
         _inferenceEngine = inferenceEngine;
         _csharpAstParser = csharpAstParser;
+        _rootDiscoverer = rootDiscoverer;
         _logger = logger;
     }
 
@@ -35,17 +38,35 @@ public sealed class PhaseTwoProcessor : IPhaseTwoProcessor
 
         var inference = _inferenceEngine.Infer(manifest);
 
+        // Multi-project / monorepo detection (e.g. root Astro + api/ NestJS).
+        var roots = _rootDiscoverer.Discover(sourceFiles);
+
         var endpoints = new List<EndpointModel>();
         endpoints.AddRange(_csharpAstParser.Parse(sourceFiles));
         endpoints.AddRange(ScriptRouteParser.Parse(sourceFiles));
+        endpoints.AddRange(NestJsControllerParser.Parse(sourceFiles, out var entities));
+        endpoints.AddRange(AstroRouteParser.Parse(sourceFiles));
+        endpoints = Deduplicate(endpoints);
+
+        var projects = roots.Select(r => new DetectedProjectInfo
+        {
+            Root = r.Root,
+            Framework = r.Framework,
+            Language = r.Language,
+        }).ToList();
+
+        // Fallback framework naming: prefer most specific backend framework.
+        var summary = PromoteFrameworks(inference.Summary, roots, endpoints);
 
         var skeleton = new TechnicalSkeleton
         {
             JobId = workspace.JobId,
             GeneratedAtUtc = DateTime.UtcNow,
-            Summary = inference.Summary,
+            Summary = summary,
             Dependencies = inference.Dependencies,
             Endpoints = endpoints,
+            Projects = projects,
+            Entities = entities,
             Warnings = manifest.Warnings,
         };
 
@@ -103,6 +124,53 @@ public sealed class PhaseTwoProcessor : IPhaseTwoProcessor
         }
 
         return counts.OrderByDescending(kv => kv.Value).Select(kv => kv.Key).FirstOrDefault();
+    }
+
+    private static List<EndpointModel> Deduplicate(List<EndpointModel> endpoints)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<EndpointModel>();
+        foreach (var e in endpoints)
+        {
+            var key = $"{e.Method} {e.Path} {e.ControllerName}";
+            if (seen.Add(key))
+            {
+                result.Add(e);
+            }
+        }
+        return result.OrderBy(e => e.Path, StringComparer.Ordinal).ThenBy(e => e.Method, StringComparer.Ordinal).ToList();
+    }
+
+    private static Dtos.ArchitectureSummary PromoteFrameworks(
+        Dtos.ArchitectureSummary summary,
+        List<Models.DetectedProjectRoot> roots,
+        List<EndpointModel> endpoints)
+    {
+        var frameworks = roots.Select(r => r.Framework).Where(f => f != "Node.js").Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (frameworks.Count > 0)
+        {
+            var hasNest = frameworks.Any(f => f.Equals("NestJS", StringComparison.OrdinalIgnoreCase));
+            var hasAstro = frameworks.Any(f => f.Equals("Astro", StringComparison.OrdinalIgnoreCase));
+            if (hasNest && hasAstro)
+            {
+                summary.Framework = "Astro (SSR frontend) + NestJS (API)";
+            }
+            else if (summary.Framework is null || summary.Framework is "React" or "Node.js")
+            {
+                summary.Framework = string.Join(" + ", frameworks);
+            }
+            else if (!frameworks.Any(f => summary.Framework.Contains(f, StringComparison.OrdinalIgnoreCase)))
+            {
+                summary.Framework = summary.Framework + " + " + string.Join(" + ", frameworks);
+            }
+        }
+
+        if (endpoints.Any(e => e.AuthRequired) && string.IsNullOrWhiteSpace(summary.Auth))
+        {
+            summary.Auth = "Guards / JWT (detected from controllers)";
+        }
+
+        return summary;
     }
 
     private static async Task WriteSkeletonAsync(

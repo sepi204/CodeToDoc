@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IProjectStackDetector, ProjectStackDetector>();
         services.AddScoped<IArchiveExtractor, SecureArchiveExtractor>();
         services.AddScoped<IFileTreeBuilder, FileTreeBuilder>();
+        services.AddScoped<IProjectRootDiscoverer, ProjectRootDiscoverer>();
         services.AddScoped<IPhaseOneProcessor, PhaseOneProcessor>();
 
         services.AddScoped<IManifestParser, ManifestParser>();

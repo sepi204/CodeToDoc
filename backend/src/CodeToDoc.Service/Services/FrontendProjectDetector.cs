@@ -6,7 +6,7 @@ namespace CodeToDoc.Service.Services;
 
 public sealed class FrontendProjectDetector : IFrontendProjectDetector
 {
-    private static readonly string[] FrontendExtensions = { ".tsx", ".jsx", ".html", ".razor", ".vue", ".ts", ".js" };
+    private static readonly string[] FrontendExtensions = { ".tsx", ".jsx", ".html", ".razor", ".vue", ".ts", ".js", ".astro" };
 
     public List<FrontendProject> Detect(string sourcePath, IReadOnlyList<SourceFile> sourceFiles)
     {
@@ -47,16 +47,37 @@ public sealed class FrontendProjectDetector : IFrontendProjectDetector
             var extension = Path.GetExtension(file.RelativePath).ToLowerInvariant();
             if (FrontendExtensions.Contains(extension))
             {
+                // Exclude pure backend NestJS TS files (controllers/services) from triggering frontend.
+                if (extension is ".ts" or ".js" &&
+                    (file.Content.Contains("@Controller(", StringComparison.Ordinal) ||
+                     file.Content.Contains("@Injectable(", StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                // .astro files are always frontend.
+                if (extension == ".astro")
+                {
+                    return true;
+                }
+
                 return true;
             }
 
             if (Path.GetFileName(file.RelativePath).Equals("package.json", StringComparison.OrdinalIgnoreCase))
             {
                 var lower = file.Content.ToLowerInvariant();
-                if (lower.Contains("\"next\"") || lower.Contains("\"react\"") || lower.Contains("\"vue\""))
+                if (lower.Contains("\"next\"") || lower.Contains("\"react\"") || lower.Contains("\"vue\"") ||
+                    lower.Contains("\"astro\"") || lower.Contains("\"svelte\""))
                 {
                     return true;
                 }
+            }
+
+            if (Path.GetFileName(file.RelativePath).Equals("astro.config.mjs", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetFileName(file.RelativePath).Equals("astro.config.ts", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
             }
         }
 
@@ -68,6 +89,12 @@ public sealed class FrontendProjectDetector : IFrontendProjectDetector
         var packageJson = files.FirstOrDefault(f =>
             Path.GetFileName(f.RelativePath).Equals("package.json", StringComparison.OrdinalIgnoreCase));
         var packageLower = packageJson?.Content.ToLowerInvariant() ?? string.Empty;
+
+        if (packageLower.Contains("\"astro\"") ||
+            files.Any(f => f.RelativePath.EndsWith(".astro", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "astro";
+        }
 
         var hasAppRouter = files.Any(f => Regex.IsMatch(
             f.RelativePath.Replace('\\', '/'),

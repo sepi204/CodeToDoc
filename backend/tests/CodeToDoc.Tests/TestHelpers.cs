@@ -38,12 +38,14 @@ internal static class TestHelpers
             NullLogger<SecureArchiveExtractor>.Instance);
 
         var fileTreeBuilder = new FileTreeBuilder();
+        var rootDiscoverer = new ProjectRootDiscoverer();
 
         return new PhaseOneProcessor(
             Options.Create(options),
             workspaceManager,
             extractor,
             fileTreeBuilder,
+            rootDiscoverer,
             NullLogger<PhaseOneProcessor>.Instance);
     }
 

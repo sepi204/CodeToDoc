@@ -56,7 +56,13 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
         var correlation = Load<CorrelationSkeleton>(workspace.JobRootPath, "correlation_skeleton.json");
 
         // Technical document.
-        if (technical is null || technical.Endpoints.Count == 0)
+        // Limited-evidence mode: even with zero endpoints, if we detected a backend
+        // project (NestJS/ASP.NET/Express/Fastify/...) we still synthesize (marked Partial)
+        // instead of falsely reporting "insufficient evidence". Pure frontend-only
+        // projects (Next/React/Astro alone) stay NotApplicable.
+        var hasTechnicalEvidence = technical is not null &&
+            (technical.Endpoints.Count > 0 || technical.Projects.Any(IsBackendProject));
+        if (!hasTechnicalEvidence)
         {
             manifest.Documents.Add(new SynthesisDocumentEntry
             {
@@ -69,7 +75,7 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
         }
         else
         {
-            manifest.Documents.Add(await SynthesizeTechnicalAsync(workspace, technical, cancellationToken));
+            manifest.Documents.Add(await SynthesizeTechnicalAsync(workspace, technical!, cancellationToken));
         }
 
         // User guide.
@@ -161,6 +167,18 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
 
         entry.ModuleCount = partitions.Count;
 
+        // Limited-evidence mode: backend detected but no endpoints parsed.
+        if (partitions.Count == 0 && entry.Status == SynthesisStatus.Complete)
+        {
+            entry.Status = SynthesisStatus.Partial;
+            entry.Diagnostics.Add(new UiDiagnostic
+            {
+                Code = "synth.limitedEvidence",
+                Severity = DiagnosticSeverity.Warning,
+                Message = "Backend project detected but no endpoints were parsed; document generated from dependencies and project structure.",
+            });
+        }
+
         var merged = MergeTechnical(modules);
         var fullPayload = BuildTechnicalPayload(technical, workspace.JobId);
         var markdown = MarkdownRenderer.RenderTechnical(fullPayload, merged, entry.Status == SynthesisStatus.Partial);
@@ -243,6 +261,13 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
     private List<SynthesisPartition> PartitionTechnical(TechnicalSkeleton technical, string jobId)
     {
         var indexed = technical.Endpoints.Select((e, i) => (Endpoint: e, Id: $"ep_{i}")).ToList();
+        var projects = BuildPayloadProjects(technical);
+        var entities = technical.Entities.Select(e => new PayloadEntity
+        {
+            Name = e.Name,
+            Properties = e.Properties.Select(p => new PayloadField { Name = p.Name, Type = p.Type ?? string.Empty, IsRequired = p.IsRequired }).ToList(),
+        }).ToList();
+        var deps = technical.Dependencies.Select(d => d.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         return indexed
             .GroupBy(x => ModuleKey(x.Endpoint.ControllerName))
@@ -259,11 +284,24 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
                         ModuleId = group.Key,
                         Summary = BuildTechnicalSummary(technical),
                         Endpoints = endpoints.Select(x => BuildPayloadEndpoint(x.Endpoint, x.Id)).ToList(),
+                        Projects = projects,
+                        Entities = entities,
+                        Dependencies = deps,
                     },
                 };
             })
             .OrderBy(p => p.ModuleId, StringComparer.Ordinal)
             .ToList();
+    }
+
+    private static List<PayloadProject> BuildPayloadProjects(TechnicalSkeleton technical)
+    {
+        return technical.Projects.Select(p => new PayloadProject
+        {
+            Root = p.Root,
+            Framework = p.Framework,
+            Language = p.Language,
+        }).ToList();
     }
 
     private static SynthesisPayload BuildTechnicalPayload(TechnicalSkeleton technical, string jobId)
@@ -276,6 +314,13 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
             ModuleId = "all",
             Summary = BuildTechnicalSummary(technical),
             Endpoints = indexed.Select(x => BuildPayloadEndpoint(x.Endpoint, x.Id)).ToList(),
+            Projects = BuildPayloadProjects(technical),
+            Entities = technical.Entities.Select(e => new PayloadEntity
+            {
+                Name = e.Name,
+                Properties = e.Properties.Select(p => new PayloadField { Name = p.Name, Type = p.Type ?? string.Empty, IsRequired = p.IsRequired }).ToList(),
+            }).ToList(),
+            Dependencies = technical.Dependencies.Select(d => d.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
         };
     }
 
@@ -287,6 +332,7 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
             Method = endpoint.Method ?? string.Empty,
             Path = endpoint.Path ?? string.Empty,
             ControllerName = endpoint.ControllerName,
+            ActionName = endpoint.ActionName,
             AuthRequired = endpoint.AuthRequired,
             Roles = endpoint.Roles ?? new List<string>(),
             RequestFields = (endpoint.RequestDto?.Properties ?? new List<PropertyModel>())
@@ -409,6 +455,22 @@ public sealed class PhaseFiveProcessor : IPhaseFiveProcessor
         if (string.IsNullOrWhiteSpace(route)) return "general";
         var segments = route.Split('/', StringSplitOptions.RemoveEmptyEntries);
         return segments.Length > 0 ? segments[0].ToLowerInvariant() : "general";
+    }
+
+    private static bool IsBackendProject(Dtos.DetectedProjectInfo project)
+    {
+        var fw = project.Framework ?? string.Empty;
+        return fw.Equals("NestJS", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("ASP.NET Core", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("Express", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("Fastify", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("Django", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("Flask", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("FastAPI", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("Spring", StringComparison.OrdinalIgnoreCase) ||
+               fw.Equals("Go", StringComparison.OrdinalIgnoreCase) ||
+               fw.Contains("NestJS", StringComparison.OrdinalIgnoreCase) ||
+               fw.Contains("ASP.NET", StringComparison.OrdinalIgnoreCase);
     }
 
     // ---- reduce ----

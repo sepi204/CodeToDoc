@@ -9,7 +9,8 @@ public sealed class ArchiveEntryFilter : IArchiveEntryFilter
     private static readonly HashSet<string> IgnoredDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         "bin", "obj", "node_modules", "packages", ".vs", ".git", "dist", "build", "out",
-        ".next", ".nuxt", ".turbo", "coverage", "__pycache__", ".pytest_cache", ".mypy_cache",
+        ".next", ".nuxt", ".turbo", ".cache", ".astro", ".vercel", ".output", ".vite",
+        "coverage", "__pycache__", ".pytest_cache", ".mypy_cache",
         ".idea", "venv", "env", ".env",
     };
 

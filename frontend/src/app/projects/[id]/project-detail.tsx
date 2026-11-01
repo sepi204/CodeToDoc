@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { FileUploadBox } from "@/components/projects/file-upload-box";
 import { ProjectDialog } from "@/components/projects/project-dialog";
@@ -25,7 +26,14 @@ import {
   isFileSource,
   isRepoSource,
 } from "@/lib/projects";
-import { jobsApi } from "@/lib/jobs";
+import { jobsApi, type JobStatusResponse } from "@/lib/jobs";
+
+const TERMINAL = new Set([
+  "completed",
+  "completedWithWarnings",
+  "failed",
+  "cancelled",
+]);
 
 interface PendingUpload {
   id: string;
@@ -47,6 +55,37 @@ export function ProjectDetail({ id }: { id: string }) {
   const [zipFiles, setZipFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
   const [processError, setProcessError] = useState<string | null>(null);
+  const [lastJobId, setLastJobId] = useState<string | null>(null);
+  const [lastJobStatus, setLastJobStatus] = useState<JobStatusResponse | null>(null);
+
+  // Track the last started job so the button doesn't stay stuck on
+  // "Processing…" and the user can upload + process again.
+  useEffect(() => {
+    if (!lastJobId) return;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      try {
+        const next = await jobsApi.status(lastJobId);
+        if (cancelled) return;
+        setLastJobStatus(next);
+        if (!TERMINAL.has(next.status)) {
+          timer = window.setTimeout(poll, 1000);
+        }
+      } catch {
+        if (!cancelled) {
+          timer = window.setTimeout(poll, 3000);
+        }
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [lastJobId]);
 
   const addUploadBox = () =>
     setPendingUploads((prev) => [
@@ -85,9 +124,14 @@ export function ProjectDetail({ id }: { id: string }) {
 
   const handleRemoveFile = async (sourceId: string) => {
     if (!project) return;
+    const removed = project.sources.find((s) => s.id === sourceId);
     setSourceError(null);
     try {
       await removeSource(project.id, sourceId);
+      // Keep the local ZIP buffer in sync so a removed file doesn't stay queued.
+      if (removed && removed.kind === "file" && removed.name) {
+        setZipFiles((prev) => prev.filter((f) => f.name !== removed.name));
+      }
     } catch (err) {
       setSourceError(err instanceof Error ? err.message : "Failed to remove file.");
     }
@@ -133,11 +177,18 @@ export function ProjectDetail({ id }: { id: string }) {
     setProcessing(true);
     try {
       const started = await jobsApi.start(zipFiles);
+      setLastJobId(started.jobId);
+      // Reset the form so the user can immediately upload + process again.
+      // The job itself keeps running on the backend and can be followed
+      // via the link below or on /documents?job=...
+      setZipFiles([]);
+      setPendingUploads([{ id: createLocalId(), uploading: false }]);
       router.push(`/documents?job=${started.jobId}`);
     } catch (err) {
       setProcessError(
         err instanceof Error ? err.message : "Failed to start processing."
       );
+    } finally {
       setProcessing(false);
     }
   };
@@ -358,7 +409,7 @@ export function ProjectDetail({ id }: { id: string }) {
               ) : (
                 <FileCode2 />
               )}
-              {processing ? "Processing…" : "Generate documentation"}
+              {processing ? "Starting…" : "Generate documentation"}
             </Button>
             <span className="text-xs text-muted-foreground">
               {zipFiles.length > 0
@@ -366,6 +417,41 @@ export function ProjectDetail({ id }: { id: string }) {
                 : "Upload a ZIP archive above to enable processing."}
             </span>
           </div>
+
+          {lastJobId ? (
+            <div className="mt-5 rounded-xl border border-border bg-muted/40 p-4" aria-live="polite">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm">
+                  Last job <span className="font-mono text-xs">{lastJobId}</span>
+                </p>
+                {lastJobStatus ? (
+                  <Badge variant="secondary">
+                    {lastJobStatus.status}
+                    {lastJobStatus.progressMessage ? ` · ${lastJobStatus.progressMessage}` : ""}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">starting…</Badge>
+                )}
+              </div>
+              {lastJobStatus && !TERMINAL.has(lastJobStatus.status) ? (
+                <div
+                  className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted"
+                  role="progressbar"
+                  aria-valuenow={undefined}
+                  aria-label="Job progress"
+                >
+                  <div className="h-full w-1/2 animate-pulse rounded-full bg-primary" />
+                </div>
+              ) : null}
+              <div className="mt-3">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/documents?job=${lastJobId}`}>
+                    View document / progress
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : (
         <section className="mt-12 rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center">

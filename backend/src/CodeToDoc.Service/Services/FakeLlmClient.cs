@@ -77,17 +77,32 @@ public sealed class FakeLlmClient : ILlmProvider
     {
         var endpointIds = payload.Endpoints.Select(e => e.EndpointId).ToList();
 
+        var frameworks = payload.Projects.Select(p => p.Framework).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var archText = frameworks.Count > 0
+            ? $"معماری سیستم شامل {string.Join(" و ", frameworks)} است؛ فرانت‌اند و API بک‌اند از هم جدا هستند."
+            : $"این ماژول شامل {payload.Endpoints.Count} اندپوینت است.";
+
         var response = new TechnicalModuleResponse
         {
             ModuleId = payload.ModuleId,
             Title = DeriveTitle(payload.ModuleId),
             Overview = new List<SynthesisStatement>
             {
-                new() { Text = $"This module handles {payload.Endpoints.Count} endpoint(s).", Certainty = "derived", EvidenceIds = endpointIds },
+                new() { Text = archText, Certainty = "derived", EvidenceIds = endpointIds },
             },
             Technologies = new List<SynthesisStatement>
             {
-                new() { Text = payload.Summary ?? "Technology stack was detected.", Certainty = "explicit" },
+                new() { Text = !string.IsNullOrWhiteSpace(payload.Summary) ? payload.Summary : "پشته تکنولوژی از روی وابستگی‌ها شناسایی شد.", Certainty = "explicit" },
+            },
+            Architecture = new List<SynthesisStatement>
+            {
+                new() { Text = frameworks.Contains("NestJS", StringComparer.OrdinalIgnoreCase) && frameworks.Contains("Astro", StringComparer.OrdinalIgnoreCase)
+                    ? "فرانت‌اند Astro با رندر سمت سرور (SSR) و بک‌اند NestJS به‌صورت سرویس مجزا از هم جدا شده‌اند؛ ارتباط از طریق REST API برقرار می‌شود."
+                    : "ساختار پروژه چندبخشی است؛ هر ریشه پروژه مسئولیت مشخصی دارد.", Certainty = "derived", EvidenceIds = endpointIds },
+            },
+            Prerequisites = new List<SynthesisStatement>
+            {
+                new() { Text = "نودجی‌اس ۲۰، مدیر بسته npm/pnpm، پایگاه‌داده PostgreSQL و متغیرهای محیطی DATABASE_URL، JWT_SECRET و API_URL را آماده کنید.", Certainty = "heuristic" },
             },
         };
 
@@ -95,7 +110,7 @@ public sealed class FakeLlmClient : ILlmProvider
         {
             response.Authentication.Add(new SynthesisStatement
             {
-                Text = "The module requires authentication for protected endpoints.",
+                Text = "برای اندپوینت‌های محافظت‌شده احراز هویت با Guards/JWT لازم است.",
                 Certainty = "explicit",
                 EvidenceIds = payload.Endpoints.Where(e => e.AuthRequired).Select(e => e.EndpointId).ToList(),
             });
@@ -105,8 +120,10 @@ public sealed class FakeLlmClient : ILlmProvider
             .Select(e => new TechnicalEndpointSection
             {
                 EndpointId = e.EndpointId,
-                Summary = $"Handles {e.Method} {e.Path}.",
+                Summary = $"این اندپوینت {e.Method} {e.Path} را پیاده‌سازی می‌کند.",
                 Certainty = "explicit",
+                RequestExample = e.RequestFields.Count > 0 ? "{" + string.Join(", ", e.RequestFields.Select(f => $"\"{f.Name}\": \"<{f.Type}>\"")) + "}" : null,
+                ResponseExample = e.ResponseFields.Count > 0 ? "{" + string.Join(", ", e.ResponseFields.Select(f => $"\"{f.Name}\": \"<{f.Type}>\"")) + "}" : null,
             })
             .ToList();
 
@@ -129,17 +146,22 @@ public sealed class FakeLlmClient : ILlmProvider
 
     private static UserGuidePageSection BuildPage(PayloadPage page)
     {
+        var title = page.Title ?? page.Route;
         return new UserGuidePageSection
         {
             PageId = page.PageId,
-            DisplayTitle = page.Title ?? page.Route,
+            DisplayTitle = title,
+            Introduction = new List<SynthesisStatement>
+            {
+                new() { Text = $"این صفحه «{title}» برای مشاهده و کار با بخش {title} طراحی شده است. در ادامه مراحل انجام کار و نتیجه هر اقدام به زبان ساده توضیح داده شده است.", Certainty = "derived" },
+            },
             Forms = page.Forms.Select(form => new UserGuideFormSection
             {
                 FormId = form.FormId,
                 Steps = form.Fields.Select((field, index) => new UserGuideStep
                 {
                     Order = index + 1,
-                    Text = $"فیلد «{field.Label ?? field.Name}» را تکمیل کنید.",
+                    Text = $"فیلد «{field.Label ?? field.Name}» را تکمیل کنید{(field.IsRequired ? " (وارد کردن آن الزامی است)" : "")}.",
                     EvidenceIds = new List<string>(),
                 }).ToList(),
                 Outcomes = form.SubmitActions.Select(action => new SynthesisStatement

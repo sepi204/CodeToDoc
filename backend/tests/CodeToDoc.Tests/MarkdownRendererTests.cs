@@ -51,7 +51,7 @@ public class MarkdownRendererTests
 
         var markdown = MarkdownRenderer.RenderTechnical(payload, TechnicalResponse(), partial: false);
 
-        Assert.DoesNotContain("Response fields", markdown);
+        Assert.DoesNotContain("فیلدهای پاسخ", markdown);
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class MarkdownRendererTests
     {
         var markdown = MarkdownRenderer.RenderTechnical(TechnicalPayload(), TechnicalResponse(), partial: true);
 
-        Assert.Contains("partial", markdown);
+        Assert.Contains("جزئی", markdown);
     }
 
     [Fact]

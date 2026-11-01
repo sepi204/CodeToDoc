@@ -59,6 +59,11 @@ public sealed class UiRouteDiscoverer : IUiRouteDiscoverer
                     if (razorRoute is not null) routes.Add(razorRoute);
                     break;
 
+                case "astro":
+                    var astroRoute = DiscoverAstro(normalized, project.Id);
+                    if (astroRoute is not null) routes.Add(astroRoute);
+                    break;
+
                 case "html":
                     routes.Add(new DiscoveredRoute
                     {
@@ -275,6 +280,56 @@ public sealed class UiRouteDiscoverer : IUiRouteDiscoverer
             RepositoryId = repositoryId,
             SourceFile = file.RelativePath,
             Route = match.Groups[1].Value,
+            IsResolved = true,
+        };
+    }
+
+    private static DiscoveredRoute? DiscoverAstro(string relativePath, string repositoryId)
+    {
+        var lower = relativePath.ToLowerInvariant();
+        if (!lower.EndsWith(".astro"))
+        {
+            return null;
+        }
+
+        // Astro file-based routing: src/pages/**/*.astro -> /route.
+        // Skip API routes (handled by AstroRouteParser in Phase 2).
+        var pagesIdx = lower.IndexOf("/pages/", StringComparison.Ordinal);
+        if (pagesIdx < 0)
+        {
+            pagesIdx = lower.IndexOf("pages/", StringComparison.Ordinal);
+            if (pagesIdx < 0) return null;
+        }
+
+        var afterPages = relativePath[(pagesIdx + "/pages".Length)..].TrimStart('/');
+        if (afterPages.StartsWith("api/", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var withoutExt = Regex.Replace(afterPages, @"\.astro$", "", RegexOptions.IgnoreCase);
+        var segments = withoutExt.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var routeParams = new List<string>();
+        for (var i = 0; i < segments.Count; i++)
+        {
+            if (segments[i].StartsWith('[') && segments[i].EndsWith(']'))
+            {
+                routeParams.Add(segments[i].Trim('[', ']'));
+            }
+        }
+
+        if (segments.Count > 0 && segments[^1].Equals("index", StringComparison.OrdinalIgnoreCase))
+        {
+            segments.RemoveAt(segments.Count - 1);
+        }
+
+        var route = segments.Count == 0 ? "/" : "/" + string.Join("/", segments);
+        return new DiscoveredRoute
+        {
+            RepositoryId = repositoryId,
+            SourceFile = relativePath,
+            Route = route,
+            RouteParameters = routeParams,
             IsResolved = true,
         };
     }

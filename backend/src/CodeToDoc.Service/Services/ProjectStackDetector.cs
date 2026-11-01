@@ -57,6 +57,11 @@ public sealed class ProjectStackDetector : IProjectStackDetector
                 case "go.mod": Add("Go", relativePath); break;
                 case "cargo.toml": Add("Rust", relativePath); break;
                 case "composer.json": Add("PHP", relativePath); break;
+                case "astro.config.mjs":
+                case "astro.config.mts":
+                case "astro.config.js":
+                case "astro.config.ts": Add("Astro", relativePath); break;
+                case "nest-cli.json": Add("NestJS", relativePath); break;
                 case "dockerfile": Add("Docker", relativePath); break;
                 case "docker-compose.yml":
                 case "docker-compose.yaml":
@@ -119,6 +124,24 @@ public sealed class ProjectStackDetector : IProjectStackDetector
                 case "react": Add("React", evidence); break;
                 case "vue": Add("Vue", evidence); break;
                 case "@angular/core": Add("Angular", evidence); break;
+                case "astro": Add("Astro", evidence); break;
+                case "@nestjs/core":
+                case "@nestjs/common": Add("NestJS", evidence); break;
+                case "@nestjs/typeorm":
+                case "typeorm": Add("TypeORM", evidence); break;
+                case "@nestjs/jwt":
+                case "@nestjs/passport":
+                case "passport":
+                case "passport-jwt": Add("Passport JWT", evidence); break;
+                case "express": Add("Express", evidence); break;
+                case "fastify":
+                case "@fastify/static": Add("Fastify", evidence); break;
+                case "prisma":
+                case "@prisma/client": Add("Prisma", evidence); break;
+                case "mongoose": Add("Mongoose", evidence); break;
+                case "sequelize": Add("Sequelize", evidence); break;
+                case "pg":
+                case "postgres": Add("PostgreSQL", evidence); break;
             }
         }
     }

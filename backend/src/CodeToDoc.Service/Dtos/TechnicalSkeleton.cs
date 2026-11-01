@@ -12,5 +12,9 @@ public class TechnicalSkeleton
 
     public List<EndpointModel> Endpoints { get; set; } = new();
 
+    public List<DetectedProjectInfo> Projects { get; set; } = new();
+
+    public List<EntityModel> Entities { get; set; } = new();
+
     public List<string> Warnings { get; set; } = new();
 }

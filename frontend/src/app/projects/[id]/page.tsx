@@ -3,7 +3,9 @@ import { ProjectDetail } from "./project-detail";
 
 export default function ProjectDetailPage({
   params,
-}: PageProps<"/projects/[id]">) {
+}: {
+  params: Promise<{ id: string }>;
+}) {
   return (
     <Suspense fallback={<ProjectDetailFallback />}>
       <ProjectDetailLoader params={params} />

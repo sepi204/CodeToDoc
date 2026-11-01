@@ -16,6 +16,7 @@ public sealed class PhaseOneProcessor : IPhaseOneProcessor
     private readonly IJobWorkspaceManager _workspaceManager;
     private readonly IArchiveExtractor _extractor;
     private readonly IFileTreeBuilder _fileTreeBuilder;
+    private readonly IProjectRootDiscoverer _rootDiscoverer;
     private readonly ILogger<PhaseOneProcessor> _logger;
 
     public PhaseOneProcessor(
@@ -23,12 +24,14 @@ public sealed class PhaseOneProcessor : IPhaseOneProcessor
         IJobWorkspaceManager workspaceManager,
         IArchiveExtractor extractor,
         IFileTreeBuilder fileTreeBuilder,
+        IProjectRootDiscoverer rootDiscoverer,
         ILogger<PhaseOneProcessor> logger)
     {
         _options = options.Value;
         _workspaceManager = workspaceManager;
         _extractor = extractor;
         _fileTreeBuilder = fileTreeBuilder;
+        _rootDiscoverer = rootDiscoverer;
         _logger = logger;
     }
 
@@ -97,6 +100,7 @@ public sealed class PhaseOneProcessor : IPhaseOneProcessor
             var fileTree = _fileTreeBuilder.Build(workspace.SourcePath);
             var textFileTree = _fileTreeBuilder.BuildText(fileTree);
             var aggregateStacks = AggregateStacks(archiveResults.SelectMany(r => r.DetectedStacks));
+            var projectRoots = DiscoverProjectRoots(workspace.SourcePath);
 
             overallStopwatch.Stop();
 
@@ -112,6 +116,7 @@ public sealed class PhaseOneProcessor : IPhaseOneProcessor
                 SkippedEntryCount = context.TotalSkippedEntries,
                 TotalExtractedBytes = context.TotalExtractedBytes,
                 AggregateDetectedStacks = aggregateStacks,
+                ProjectRoots = projectRoots,
                 ArchiveResults = archiveResults,
                 FileTree = fileTree,
                 TextFileTree = textFileTree,
@@ -208,6 +213,47 @@ public sealed class PhaseOneProcessor : IPhaseOneProcessor
         }
 
         return candidate;
+    }
+
+    private List<Dtos.DetectedProjectInfo> DiscoverProjectRoots(string sourcePath)
+    {
+        try
+        {
+            var manifests = new List<Models.SourceFile>();
+            foreach (var file in Directory.EnumerateFiles(sourcePath, "*", SearchOption.AllDirectories))
+            {
+                var name = Path.GetFileName(file).ToLowerInvariant();
+                if (name is not ("package.json") && !name.EndsWith(".csproj"))
+                {
+                    continue;
+                }
+
+                string content;
+                try
+                {
+                    content = File.ReadAllText(file);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                var relative = Path.GetRelativePath(sourcePath, file).Replace('\\', '/');
+                manifests.Add(new Models.SourceFile { RelativePath = relative, Content = content });
+                if (manifests.Count >= 50)
+                {
+                    break;
+                }
+            }
+
+            return _rootDiscoverer.Discover(manifests)
+                .Select(r => new Dtos.DetectedProjectInfo { Root = r.Root, Framework = r.Framework, Language = r.Language })
+                .ToList();
+        }
+        catch
+        {
+            return new List<Dtos.DetectedProjectInfo>();
+        }
     }
 
     private static List<DetectedStack> AggregateStacks(IEnumerable<DetectedStack> stacks)

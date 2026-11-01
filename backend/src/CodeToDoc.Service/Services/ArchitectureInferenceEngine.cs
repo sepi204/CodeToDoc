@@ -41,8 +41,12 @@ public sealed class ArchitectureInferenceEngine : IArchitectureInferenceEngine
         }
 
         if (dependencyNames.Contains("next")) return "Next.js";
+        if (dependencyNames.Contains("nuxt")) return "Nuxt";
+        if (dependencyNames.Contains("astro")) return "Astro";
+        if (dependencyNames.Contains("@nestjs/core") || dependencyNames.Contains("@nestjs/common")) return "NestJS";
         if (dependencyNames.Contains("react")) return "React";
         if (dependencyNames.Contains("express")) return "Express";
+        if (dependencyNames.Contains("fastify") || dependencyNames.Contains("@fastify/static")) return "Fastify";
         if (dependencyNames.Contains("fastapi")) return "FastAPI";
         if (dependencyNames.Contains("flask")) return "Flask";
         if (dependencyNames.Contains("django")) return "Django";
@@ -85,6 +89,7 @@ public sealed class ArchitectureInferenceEngine : IArchitectureInferenceEngine
     {
         if (name.Contains("jwtbearer")) return "JWT Bearer";
         if (name is "jsonwebtoken" or "jose") return "JWT Bearer";
+        if (name is "@nestjs/jwt" or "@nestjs/passport" or "passport" or "passport-jwt" or "passport-local") return "JWT Bearer (Passport/Guards)";
         if (name.Contains("aspnetcore.identity")) return "ASP.NET Core Identity";
         if (name.Contains("identityserver")) return "OpenID Connect";
         if (name.StartsWith("duende")) return "OpenID Connect";
@@ -114,7 +119,7 @@ public sealed class ArchitectureInferenceEngine : IArchitectureInferenceEngine
             return "Authentication";
         }
 
-        if (n is "next" or "react" or "react-dom" or "vue" or "@angular/core" or "express" or "fastapi" or "flask" or "django")
+        if (n is "next" or "nuxt" or "astro" or "react" or "react-dom" or "vue" or "@angular/core" or "express" or "fastify" or "@nestjs/core" or "@nestjs/common" or "fastapi" or "flask" or "django")
         {
             return "Framework";
         }

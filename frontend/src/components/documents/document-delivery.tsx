@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, CheckCircle2, Loader2, Upload, XCircle } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { CircleAlert, CheckCircle2, Loader2, Upload, XCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DocumentViewer } from "./document-viewer";
@@ -14,16 +15,57 @@ const TERMINAL = new Set([
   "cancelled",
 ]);
 
+const PHASE_ORDER = ["phase1", "phase2", "phase3", "phase4", "phase5", "phase6"];
+
+const PHASE_LABELS: Record<string, string> = {
+  phase1: "Ingest",
+  phase2: "Backend",
+  phase3: "Frontend",
+  phase4: "Correlate",
+  phase5: "Synthesize",
+  phase6: "Publish",
+};
+
+function phaseProgress(status: JobStatusResponse | null): number {
+  if (!status) return 0;
+  if (TERMINAL.has(status.status)) {
+    return status.status === "completed" || status.status === "completedWithWarnings" ? 100 : 100;
+  }
+  const byName = new Map(status.phases.map((p) => [p.phase, p.status]));
+  let done = 0;
+  for (const name of PHASE_ORDER) {
+    const s = (byName.get(name) ?? "").toLowerCase();
+    if (s === "complete" || s === "completed") done += 1;
+    else if (s === "partial" || s === "completedwithwarnings") done += 0.7;
+    else if (s === "running" || s === "inprogress") {
+      done += 0.5;
+      break;
+    } else if (s === "blocked" || s === "failed" || s === "notapplicable") {
+      done += 1;
+    } else {
+      break;
+    }
+  }
+  return Math.min(99, Math.round((done / PHASE_ORDER.length) * 100));
+}
+
 export function DocumentDelivery() {
-  const [jobId, setJobId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("job");
-  });
+  const searchParams = useSearchParams();
+  const queryJobId = searchParams.get("job");
+  const [jobId, setJobId] = useState<string | null>(queryJobId);
   const [status, setStatus] = useState<JobStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<number | null>(null);
+
+  // Keep jobId in sync with the URL (fixes SSR + client-navigation staleness).
+  useEffect(() => {
+    setJobId(queryJobId);
+    if (!queryJobId) {
+      setStatus(null);
+    }
+  }, [queryJobId]);
 
   // Poll the status endpoint until the job reaches a terminal state.
   useEffect(() => {
@@ -35,16 +77,19 @@ export function DocumentDelivery() {
         const next = await jobsApi.status(jobId);
         if (cancelled) return;
         setStatus(next);
+        setError(null);
         if (!TERMINAL.has(next.status)) {
           timerRef.current = window.setTimeout(poll, 1000);
         }
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load job status.");
-        }
+        if (cancelled) return;
+        // Keep retrying on transient fetch errors instead of giving up.
+        setError(err instanceof Error ? err.message : "Failed to load job status.");
+        timerRef.current = window.setTimeout(poll, 3000);
       }
     };
 
+    setStatus(null);
     poll();
 
     return () => {
@@ -61,6 +106,7 @@ export function DocumentDelivery() {
     setUploading(true);
     try {
       const started = await jobsApi.start(Array.from(files));
+      window.history.replaceState(null, "", `/documents?job=${started.jobId}`);
       setJobId(started.jobId);
       setStatus(null);
     } catch (err) {
@@ -71,6 +117,9 @@ export function DocumentDelivery() {
   };
 
   const startOver = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+    }
     setJobId(null);
     setStatus(null);
     setError(null);
@@ -81,8 +130,19 @@ export function DocumentDelivery() {
     if (status.status === "completed" || status.status === "completedWithWarnings") {
       return (
         <div>
+          <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Job <span className="font-mono">{status.jobId}</span> · {status.status}
+              </p>
+              <Button variant="outline" size="sm" onClick={startOver} className="gap-1.5">
+                <RotateCcw className="size-3.5" />
+                Process another archive
+              </Button>
+            </div>
+          </div>
           {status.status === "completedWithWarnings" ? (
-            <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+            <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6">
               <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
                 <CircleAlert className="mt-0.5 size-5 shrink-0 text-amber-600" />
                 <span>Some artifacts could not be generated — available documents are shown below.</span>
@@ -112,24 +172,77 @@ export function DocumentDelivery() {
     );
   }
 
-  if (status) {
-    return (
-      <div className="mx-auto max-w-xl px-4 py-20 text-center sm:px-6">
-        <Loader2 className="mx-auto size-10 animate-spin text-primary" />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">Processing</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{status.progressMessage || "Working…"}</p>
-        <div className="mt-6 flex justify-center gap-1.5">
-          {status.phases.map((phase) => (
-            <Badge key={phase.phase} variant="secondary">
-              {phase.phase} · {phase.status}
-            </Badge>
-          ))}
+  if (jobId) {
+    const progress = phaseProgress(status);
+    const isTerminal = status ? TERMINAL.has(status.status) : false;
+    // Still loading the first status response — show determinate-looking bar.
+    if (!status) {
+      return (
+        <div className="mx-auto max-w-xl px-4 py-20 text-center sm:px-6" role="status" aria-live="polite">
+          <Loader2 className="mx-auto size-10 animate-spin text-primary" />
+          <h1 className="mt-4 text-2xl font-bold tracking-tight">Starting…</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Upload finished. Waiting for job <span className="font-mono">{jobId}</span>…
+          </p>
+          <div className="mt-6 h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <div className="h-full w-1/4 animate-pulse rounded-full bg-primary" />
+          </div>
+          {error ? <p className="mt-4 text-sm text-destructive">{error} Retrying…</p> : null}
+          <Button variant="outline" onClick={startOver} className="mt-6">
+            Start over
+          </Button>
         </div>
-        <Button variant="outline" onClick={() => jobsApi.cancel(status.jobId)} className="mt-6">
-          Cancel
-        </Button>
-      </div>
-    );
+      );
+    }
+
+    if (!isTerminal) {
+      return (
+        <div className="mx-auto max-w-xl px-4 py-20 text-center sm:px-6" role="status" aria-live="polite">
+          <Loader2 className="mx-auto size-10 animate-spin text-primary" />
+          <h1 className="mt-4 text-2xl font-bold tracking-tight">
+            Processing <span className="font-mono text-lg">{progress}%</span>
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">{status.progressMessage || "Working…"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Job <span className="font-mono">{status.jobId}</span> · {status.status} · {status.phase}
+          </p>
+          <div
+            className="mt-6 h-2.5 w-full overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="mt-6 flex flex-wrap justify-center gap-1.5">
+            {PHASE_ORDER.map((name) => {
+              const s = status.phases.find((p) => p.phase === name)?.status ?? "pending";
+              const done = ["complete", "completed", "partial", "blocked", "notapplicable"].includes(
+                s.toLowerCase()
+              );
+              return (
+                <Badge key={name} variant={done ? "default" : "secondary"}>
+                  {PHASE_LABELS[name] ?? name} · {s}
+                </Badge>
+              );
+            })}
+          </div>
+          {error ? <p className="mt-4 text-sm text-destructive">{error} Retrying…</p> : null}
+          <div className="mt-6 flex items-center justify-center gap-2">
+            <Button variant="outline" onClick={() => jobsApi.cancel(status.jobId)}>
+              Cancel
+            </Button>
+            <Button variant="ghost" onClick={startOver}>
+              Start over
+            </Button>
+          </div>
+        </div>
+      );
+    }
   }
 
   return (

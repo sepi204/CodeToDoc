@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     "CodeToDoc scans your repositories and automatically generates clean, searchable documentation — no manual writing required.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

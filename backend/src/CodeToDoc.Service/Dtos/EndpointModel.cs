@@ -17,4 +17,6 @@ public class EndpointModel
     public DtoModel? RequestDto { get; set; }
 
     public ResponseModel? ResponseDto { get; set; }
+
+    public string? SourceProject { get; set; }
 }

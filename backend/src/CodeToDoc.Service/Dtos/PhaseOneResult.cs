@@ -20,6 +20,8 @@ public class PhaseOneResult
 
     public List<DetectedStack> AggregateDetectedStacks { get; set; } = new();
 
+    public List<DetectedProjectInfo> ProjectRoots { get; set; } = new();
+
     public List<ArchiveResult> ArchiveResults { get; set; } = new();
 
     public FileTreeNode? FileTree { get; set; }
